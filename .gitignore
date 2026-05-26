@@ -1,0 +1,12 @@
+# Compiled binary (build with `go build -o obsidian-vault-mcp .`)
+/obsidian-vault-mcp
+
+# Go build & test artifacts
+*.exe
+*.test
+*.out
+coverage.txt
+coverage.html
+
+# Editor / OS cruft
+.DS_Store
