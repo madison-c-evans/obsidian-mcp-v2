@@ -21,6 +21,7 @@ type Vault struct {
 	mentions    map[string]map[string]struct{}
 	mentionedBy map[string]map[string]struct{}
 	topicsOf    map[string]map[string]struct{}
+	tagIndex    map[string]map[string]struct{}
 }
 
 func New(vaultPath string) (*Vault, error) {
@@ -54,6 +55,7 @@ func (v *Vault) buildIndexLocked() error {
 	v.mentions = make(map[string]map[string]struct{})
 	v.mentionedBy = make(map[string]map[string]struct{})
 	v.topicsOf = make(map[string]map[string]struct{})
+	v.tagIndex = make(map[string]map[string]struct{})
 
 	files, err := v.scanMarkdownFiles()
 	if err != nil {
@@ -68,6 +70,7 @@ func (v *Vault) buildIndexLocked() error {
 	}
 	v.buildGraphEdges()
 	v.buildMentionEdges()
+	v.buildTagIndex()
 	return nil
 }
 

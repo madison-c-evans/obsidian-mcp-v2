@@ -87,3 +87,8 @@ type Stats struct {
 	EdgeCount    int
 	MentionCount int
 }
+
+type TagCount struct {
+	Tag   string
+	Count int
+}

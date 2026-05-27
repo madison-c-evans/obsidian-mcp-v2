@@ -92,6 +92,7 @@ func (v *Vault) CreateNote(opts CreateOptions) (*Note, error) {
 	v.notes[note.Title] = note
 	v.buildGraphEdges()
 	v.buildMentionEdges()
+	v.buildTagIndex()
 	return note, nil
 }
 
@@ -146,6 +147,7 @@ func (v *Vault) EditNoteSection(title, heading, newSectionContent string) (*Note
 	v.notes[updated.Title] = updated
 	v.buildGraphEdges()
 	v.buildMentionEdges()
+	v.buildTagIndex()
 	return updated, nil
 }
 
@@ -179,6 +181,7 @@ func (v *Vault) rewriteBody(title string, transform func(existing string) string
 	v.notes[updated.Title] = updated
 	v.buildGraphEdges()
 	v.buildMentionEdges()
+	v.buildTagIndex()
 	return updated, nil
 }
 
@@ -285,6 +288,7 @@ func (v *Vault) applyFrontmatterUpdate(title string, updates FrontmatterUpdate) 
 	}
 	v.notes[updated.Title] = updated
 	v.buildGraphEdges()
+	v.buildTagIndex()
 	return updated, nil
 }
 
@@ -315,6 +319,7 @@ func (v *Vault) DeleteNote(title string) (*DeleteResult, error) {
 	delete(v.notes, note.Title)
 	v.buildGraphEdges()
 	v.buildMentionEdges()
+	v.buildTagIndex()
 
 	return &DeleteResult{Deleted: note.Title, AffectedNotes: affected}, nil
 }
@@ -429,6 +434,7 @@ func (v *Vault) RenameNote(oldTitle, newTitle string) (*RenameResult, error) {
 
 	v.buildGraphEdges()
 	v.buildMentionEdges()
+	v.buildTagIndex()
 
 	updatedRefs := make([]string, 0, len(updatedSet))
 	for t := range updatedSet {
