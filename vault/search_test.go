@@ -207,3 +207,23 @@ func TestTrimAroundMatch_ValidUTF8(t *testing.T) {
 		t.Errorf("window exceeds cap: %d runes", utf8.RuneCountInString(out))
 	}
 }
+
+// TestExtractExcerpt_NoNestedBoldMarkers guards the malformed-markdown bug: a
+// matched term inside source text that's already **bold** must not produce
+// interleaved markers like "**No **PKCE**.**". The preview drops source bold so
+// the only "**" are the highlighter's, leaving well-formed output.
+func TestExtractExcerpt_NoNestedBoldMarkers(t *testing.T) {
+	out := extractExcerpt("Intro about **bold PKCE term** here", []string{"pkce"})
+	if !strings.Contains(out, "**PKCE**") {
+		t.Errorf("expected matched term highlighted: %q", out)
+	}
+	if strings.Contains(out, "****") {
+		t.Errorf("found empty/adjacent bold markers: %q", out)
+	}
+	if n := strings.Count(out, "**"); n != 2 {
+		t.Errorf("expected exactly one balanced bold run (2 markers), got %d: %q", n, out)
+	}
+	if !utf8.ValidString(out) {
+		t.Errorf("invalid UTF-8: %q", out)
+	}
+}

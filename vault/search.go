@@ -225,8 +225,20 @@ func extractExcerpt(text string, terms []string) string {
 	}
 
 	snippet := strings.Join(picked, "\n")
+	snippet = stripBoldMarkers(snippet)
 	snippet = trimAroundMatch(snippet, terms, excerptMaxChars)
 	return highlightTerms(snippet, terms)
+}
+
+// stripBoldMarkers removes "**" emphasis runs from an excerpt snippet. The
+// snippet is a lossy preview and highlightTerms injects its own "**" around
+// matched terms; leaving the source's "**" in place lets the two interleave
+// into malformed markdown (e.g. "**No **PKCE**.**") when a match lands inside an
+// already-bold run. Dropping source bold from the preview keeps the highlighted
+// output well-formed. Single-marker emphasis (*, _, __) can't collide with our
+// "**" injection, so it's left intact.
+func stripBoldMarkers(s string) string {
+	return strings.ReplaceAll(s, "**", "")
 }
 
 func lineMatchesAny(line string, terms []string) bool {
