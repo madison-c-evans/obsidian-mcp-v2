@@ -53,6 +53,7 @@ type SearchResult struct {
 	Note         *Note
 	Score        float64
 	MatchType    string
+	Excerpt      string
 	GraphContext *GraphContext
 }
 

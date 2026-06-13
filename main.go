@@ -107,6 +107,14 @@ func formatNoteFull(n *vault.Note) string {
 	return header + "\n\n---\n\n" + n.Content
 }
 
+func formatExcerpt(excerpt string) string {
+	lines := strings.Split(excerpt, "\n")
+	for i, l := range lines {
+		lines[i] = "> " + l
+	}
+	return strings.Join(lines, "\n")
+}
+
 func formatGraphCompact(ctx *vault.GraphContext) string {
 	if ctx == nil {
 		return ""
@@ -282,6 +290,9 @@ func searchHandler(v *vault.Vault) server.ToolHandlerFunc {
 			parts := []string{
 				fmt.Sprintf("### %d. %s  (score: %.2f, match: %s)", i+1, r.Note.Title, r.Score, r.MatchType),
 				formatNoteSummary(r.Note),
+			}
+			if r.Excerpt != "" {
+				parts = append(parts, "", formatExcerpt(r.Excerpt))
 			}
 			if r.GraphContext != nil {
 				compact := formatGraphCompact(r.GraphContext)
