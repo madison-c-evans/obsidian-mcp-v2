@@ -61,6 +61,7 @@ func registerTools(s *server.MCPServer, v *vault.Vault) {
 	s.AddTool(healthTool(), healthHandler(v))
 	s.AddTool(reindexTool(), reindexHandler(v))
 	s.AddTool(tasksTool(), tasksHandler(v))
+	s.AddTool(tagsTool(), tagsHandler(v))
 }
 
 // ── Formatters ───────────────────────────────────────────────────────────────
@@ -777,6 +778,38 @@ func tasksHandler(v *vault.Vault) server.ToolHandlerFunc {
 			parts = append(parts, "")
 		}
 		return mcp.NewToolResultText(strings.TrimRight(strings.Join(parts, "\n"), "\n")), nil
+	}
+}
+
+func tagsTool() mcp.Tool {
+	return mcp.NewTool("vault_tags",
+		mcp.WithDescription(`List every tag in the vault with how many notes carry it. Sorted by count
+descending, tie-broken alphabetically. Optionally filter to notes whose
+upstream chain reaches a given topic.`),
+		mcp.WithString("topic", mcp.Description("Only count notes under this topic (traverses upstream)")),
+	)
+}
+
+func tagsHandler(v *vault.Vault) server.ToolHandlerFunc {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		topic := req.GetString("topic", "")
+		counts := v.ListTags(topic)
+		if len(counts) == 0 {
+			if topic != "" {
+				return mcp.NewToolResultText(fmt.Sprintf("No tags found under topic %q.", topic)), nil
+			}
+			return mcp.NewToolResultText("No tags found."), nil
+		}
+
+		header := fmt.Sprintf("## Tags (%d)", len(counts))
+		if topic != "" {
+			header = fmt.Sprintf("## Tags under %q (%d)", topic, len(counts))
+		}
+		lines := []string{header, ""}
+		for _, tc := range counts {
+			lines = append(lines, fmt.Sprintf("- %s (%d)", tc.Tag, tc.Count))
+		}
+		return mcp.NewToolResultText(strings.Join(lines, "\n")), nil
 	}
 }
 
