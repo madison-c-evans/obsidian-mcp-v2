@@ -1,9 +1,25 @@
 package vault
 
 import (
+	"bytes"
 	"fmt"
+	"sort"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 )
+
+// knownFrontmatterKeys are the fields serializeFrontmatter renders explicitly
+// in canonical form. Any other key is preserved verbatim (see preserveExtras)
+// rather than dropped.
+var knownFrontmatterKeys = map[string]struct{}{
+	"tags":           {},
+	"external-links": {},
+	"upstream":       {},
+	"date":           {},
+	"status":         {},
+	"description":    {},
+}
 
 // serializeNote rebuilds the on-disk file from a raw frontmatter map plus body.
 // Mirrors the format the TS version emits: bare empty keys (not `null`),
@@ -96,8 +112,44 @@ func serializeFrontmatter(data map[string]any) string {
 		}
 	}
 
+	lines = append(lines, preserveExtras(data)...)
+
 	lines = append(lines, "---")
 	return strings.Join(lines, "\n")
+}
+
+// preserveExtras renders any frontmatter keys outside the known schema (e.g.
+// Obsidian fields like aliases, cssclass, publish) so an edit doesn't silently
+// drop them. Keys are emitted alphabetically, after the canonical fields, using
+// the same 2-space indent as the hand-rolled known fields.
+func preserveExtras(data map[string]any) []string {
+	var keys []string
+	for k := range data {
+		if _, known := knownFrontmatterKeys[k]; !known {
+			keys = append(keys, k)
+		}
+	}
+	if len(keys) == 0 {
+		return nil
+	}
+	sort.Strings(keys)
+
+	var out []string
+	for _, k := range keys {
+		var buf bytes.Buffer
+		enc := yaml.NewEncoder(&buf)
+		enc.SetIndent(2)
+		if err := enc.Encode(map[string]any{k: data[k]}); err != nil {
+			enc.Close()
+			continue
+		}
+		enc.Close()
+		rendered := strings.TrimRight(buf.String(), "\n")
+		if rendered != "" {
+			out = append(out, rendered)
+		}
+	}
+	return out
 }
 
 func yamlDoubleQuote(s string) string {

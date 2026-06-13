@@ -1,6 +1,8 @@
 package vault
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -423,6 +425,99 @@ func TestSerializeNote_RoundTripEmptyFrontmatter(t *testing.T) {
 	}
 	if fm.Status != "" || fm.Date != "" || fm.Description != "" {
 		t.Errorf("expected empty scalars; got status=%q date=%q desc=%q", fm.Status, fm.Date, fm.Description)
+	}
+}
+
+func TestSerializeFrontmatter_PreservesUnknownScalar(t *testing.T) {
+	out := serializeFrontmatter(map[string]any{
+		"status":   "TODO",
+		"cssclass": "wide",
+	})
+	if !containsLine(out, "cssclass: wide") {
+		t.Errorf("unknown scalar key dropped; out:\n%s", out)
+	}
+	// Unknown keys come after the canonical fields and before the closing ---.
+	if strings.Index(out, "status:") > strings.Index(out, "cssclass:") {
+		t.Errorf("unknown key should follow canonical fields; out:\n%s", out)
+	}
+}
+
+func TestSerializeFrontmatter_PreservesUnknownList(t *testing.T) {
+	out := serializeFrontmatter(map[string]any{
+		"status":  "TODO",
+		"aliases": []any{"PKCE", "Proof Key for Code Exchange"},
+	})
+	if !containsLine(out, "aliases:") {
+		t.Errorf("unknown list header dropped; out:\n%s", out)
+	}
+	if !containsLine(out, "  - PKCE") || !containsLine(out, "  - Proof Key for Code Exchange") {
+		t.Errorf("unknown list items dropped or wrong indent; out:\n%s", out)
+	}
+}
+
+func TestSerializeFrontmatter_PreservesUnknownNestedMap(t *testing.T) {
+	out := serializeFrontmatter(map[string]any{
+		"status": "TODO",
+		"obsidian": map[string]any{
+			"pinned": true,
+		},
+	})
+	if !containsLine(out, "obsidian:") || !containsLine(out, "  pinned: true") {
+		t.Errorf("unknown nested map dropped; out:\n%s", out)
+	}
+}
+
+func TestSerializeFrontmatter_MultipleUnknownKeysAlphabetical(t *testing.T) {
+	out := serializeFrontmatter(map[string]any{
+		"status": "TODO",
+		"zeta":   "z",
+		"alpha":  "a",
+	})
+	if strings.Index(out, "alpha:") > strings.Index(out, "zeta:") {
+		t.Errorf("unknown keys should be alphabetical; out:\n%s", out)
+	}
+}
+
+// TestEditPreservesUnknownFrontmatter is the end-to-end guard for the bug: a
+// note authored with a custom field (e.g. via Obsidian) must keep that field
+// after an edit through the MCP write path.
+func TestEditPreservesUnknownFrontmatter(t *testing.T) {
+	v, root := newWriteTestVault(t)
+
+	note := `---
+tags:
+  - notes
+external-links:
+upstream: "[[Topic One]]"
+date: 2024-03-03
+status: TODO
+aliases:
+  - Custom Alias
+cssclass: wide
+---
+Original body.
+`
+	path := filepath.Join(root, "Custom.md")
+	if err := os.WriteFile(path, []byte(note), 0o644); err != nil {
+		t.Fatalf("write Custom.md: %v", err)
+	}
+	if err := v.BuildIndex(); err != nil {
+		t.Fatalf("reindex: %v", err)
+	}
+
+	if _, err := v.AppendToNote("Custom", "Appended line."); err != nil {
+		t.Fatalf("AppendToNote: %v", err)
+	}
+
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read back: %v", err)
+	}
+	got := string(raw)
+	for _, want := range []string{"aliases:", "  - Custom Alias", "cssclass: wide", "Appended line."} {
+		if !strings.Contains(got, want) {
+			t.Errorf("edit dropped %q from note; got:\n%s", want, got)
+		}
 	}
 }
 
