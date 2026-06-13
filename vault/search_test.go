@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 func writeSearchNote(t *testing.T, dir, name, body string) {
@@ -158,5 +159,51 @@ func TestSearchExcerpt_NoMatchReturnsEmpty(t *testing.T) {
 		if r.Excerpt != "" {
 			t.Errorf("expected empty excerpt for non-matching query, got %q on %s", r.Excerpt, r.Note.Title)
 		}
+	}
+}
+
+func TestHighlightTerms_ASCII(t *testing.T) {
+	got := highlightTerms("index the postgres index", []string{"index"})
+	want := "**index** the postgres **index**"
+	if got != want {
+		t.Errorf("highlightTerms ascii = %q, want %q", got, want)
+	}
+}
+
+// TestHighlightTerms_UnicodeOffsets guards the byte-offset desync bug: 'İ'
+// (U+0130) and the Kelvin sign 'K' (U+212A) both lowercase to a 1-byte rune via
+// strings.ToLower, so a byte-offset highlighter drifts after them and would
+// mis-place the bold markers (or panic). Rune-based matching must wrap the
+// exact term regardless of preceding multi-byte characters.
+func TestHighlightTerms_UnicodeOffsets(t *testing.T) {
+	cases := []struct{ in, term, want string }{
+		{"İstanbul Postgres notes", "postgres", "İstanbul **Postgres** notes"},
+		{"temp K then Postgres rises", "postgres", "temp K then **Postgres** rises"},
+		{"ẞemantic Postgres", "postgres", "ẞemantic **Postgres**"},
+	}
+	for _, c := range cases {
+		got := highlightTerms(c.in, []string{c.term})
+		if got != c.want {
+			t.Errorf("highlightTerms(%q, %q) = %q, want %q", c.in, c.term, got, c.want)
+		}
+		if !utf8.ValidString(got) {
+			t.Errorf("highlightTerms(%q) produced invalid UTF-8: %q", c.in, got)
+		}
+	}
+}
+
+// TestTrimAroundMatch_ValidUTF8 ensures the length cap never slices through a
+// multi-byte rune and keeps the matched term inside the window.
+func TestTrimAroundMatch_ValidUTF8(t *testing.T) {
+	long := strings.Repeat("é", 300) + " Postgres " + strings.Repeat("ü", 300)
+	out := trimAroundMatch(long, []string{"postgres"}, excerptMaxChars)
+	if !utf8.ValidString(out) {
+		t.Errorf("trimAroundMatch produced invalid UTF-8: %q", out)
+	}
+	if !strings.Contains(strings.ToLower(out), "postgres") {
+		t.Errorf("matched term dropped from window: %q", out)
+	}
+	if utf8.RuneCountInString(out) > excerptMaxChars+2 { // +2 for ellipses
+		t.Errorf("window exceeds cap: %d runes", utf8.RuneCountInString(out))
 	}
 }

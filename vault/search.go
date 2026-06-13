@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"unicode"
 )
 
 func (v *Vault) ResolveNote(query string) *Note {
@@ -238,22 +239,57 @@ func lineMatchesAny(line string, terms []string) bool {
 	return false
 }
 
-// trimAroundMatch caps snippet length, centering the window on the first
-// matched term occurrence so the matched text stays visible.
+// lowerRunes returns a per-rune lowercased copy. unicode.ToLower maps each rune
+// to exactly one rune, so index alignment with the input slice is preserved.
+// (strings.ToLower on a string can change byte length — İ→i, K(U+212A)→k,
+// ẞ→ß — which would desync byte offsets between the lowercased and original
+// text and could mis-place highlights or panic.)
+func lowerRunes(rs []rune) []rune {
+	out := make([]rune, len(rs))
+	for i, r := range rs {
+		out[i] = unicode.ToLower(r)
+	}
+	return out
+}
+
+// indexRunes returns the index of the first occurrence of sub within s, or -1.
+func indexRunes(s, sub []rune) int {
+	if len(sub) == 0 {
+		return 0
+	}
+	for i := 0; i+len(sub) <= len(s); i++ {
+		match := true
+		for j := range sub {
+			if s[i+j] != sub[j] {
+				match = false
+				break
+			}
+		}
+		if match {
+			return i
+		}
+	}
+	return -1
+}
+
+// trimAroundMatch caps snippet length (in runes), centering the window on the
+// first matched term occurrence so the matched text stays visible. Rune-based
+// so it never slices through a multi-byte character.
 func trimAroundMatch(snippet string, terms []string, maxChars int) string {
-	if len(snippet) <= maxChars {
+	runes := []rune(snippet)
+	if len(runes) <= maxChars {
 		return snippet
 	}
-	lower := strings.ToLower(snippet)
+	lower := lowerRunes(runes)
 	pos := -1
 	for _, t := range terms {
-		if i := strings.Index(lower, t); i >= 0 {
+		if i := indexRunes(lower, []rune(t)); i >= 0 {
 			pos = i
 			break
 		}
 	}
 	if pos < 0 {
-		return snippet[:maxChars] + "…"
+		return string(runes[:maxChars]) + "…"
 	}
 	half := maxChars / 2
 	start := pos - half
@@ -261,45 +297,49 @@ func trimAroundMatch(snippet string, terms []string, maxChars int) string {
 		start = 0
 	}
 	end := start + maxChars
-	if end > len(snippet) {
-		end = len(snippet)
+	if end > len(runes) {
+		end = len(runes)
 		start = end - maxChars
 		if start < 0 {
 			start = 0
 		}
 	}
-	out := snippet[start:end]
+	out := string(runes[start:end])
 	if start > 0 {
 		out = "…" + out
 	}
-	if end < len(snippet) {
+	if end < len(runes) {
 		out = out + "…"
 	}
 	return out
 }
 
 // highlightTerms wraps matched terms with **…** for visibility. Case is
-// preserved in the original snippet. Longest term wins per overlap.
+// preserved in the original snippet. Longest term wins per overlap. Matching
+// and span-marking operate on runes (see lowerRunes) so multi-byte characters
+// can't desync the offsets.
 func highlightTerms(snippet string, terms []string) string {
 	if snippet == "" || len(terms) == 0 {
 		return snippet
 	}
-	lower := strings.ToLower(snippet)
-	marked := make([]bool, len(snippet))
+	runes := []rune(snippet)
+	lower := lowerRunes(runes)
+	marked := make([]bool, len(runes))
 	type span struct{ start, end int }
 	var spans []span
 	for _, t := range terms {
 		if t == "" {
 			continue
 		}
+		tr := []rune(t)
 		start := 0
-		for start < len(lower) {
-			i := strings.Index(lower[start:], t)
+		for start+len(tr) <= len(lower) {
+			i := indexRunes(lower[start:], tr)
 			if i < 0 {
 				break
 			}
 			abs := start + i
-			end := abs + len(t)
+			end := abs + len(tr)
 			overlap := false
 			for k := abs; k < end; k++ {
 				if marked[k] {
@@ -323,13 +363,13 @@ func highlightTerms(snippet string, terms []string) string {
 	var b strings.Builder
 	prev := 0
 	for _, s := range spans {
-		b.WriteString(snippet[prev:s.start])
+		b.WriteString(string(runes[prev:s.start]))
 		b.WriteString("**")
-		b.WriteString(snippet[s.start:s.end])
+		b.WriteString(string(runes[s.start:s.end]))
 		b.WriteString("**")
 		prev = s.end
 	}
-	b.WriteString(snippet[prev:])
+	b.WriteString(string(runes[prev:]))
 	return b.String()
 }
 
