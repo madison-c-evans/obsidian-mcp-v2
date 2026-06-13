@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func writeNote(t *testing.T, dir, name, body string) {
+func writeSearchNote(t *testing.T, dir, name, body string) {
 	t.Helper()
 	if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
 		t.Fatalf("write %s: %v", name, err)
@@ -18,7 +18,7 @@ func newTestVault(t *testing.T) *Vault {
 	t.Helper()
 	dir := t.TempDir()
 
-	writeNote(t, dir, "Postgres Indexing.md", `---
+	writeSearchNote(t, dir, "Postgres Indexing.md", `---
 tags: [notes]
 status: sprout
 description: Reference for picking the right index type when query latency spikes.
@@ -33,7 +33,7 @@ behind tenant-scoped listings.
 For hot keysets a partial index can carve out the active subset.
 `)
 
-	writeNote(t, dir, "Frontend Routing.md", `---
+	writeSearchNote(t, dir, "Frontend Routing.md", `---
 tags: [notes]
 status: TODO
 ---
@@ -42,7 +42,7 @@ Next.js app router handles all SSR routes. We avoid client-side routing
 hacks because they bypass middleware auth checks.
 `)
 
-	writeNote(t, dir, "Long Wall.md", `---
+	writeSearchNote(t, dir, "Long Wall.md", `---
 tags: [notes]
 ---
 
