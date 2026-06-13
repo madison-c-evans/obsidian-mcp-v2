@@ -334,6 +334,10 @@ func (v *Vault) buildMentionEdges() {
 func (v *Vault) GetStats() Stats {
 	v.mu.RLock()
 	defer v.mu.RUnlock()
+	return v.getStatsLocked()
+}
+
+func (v *Vault) getStatsLocked() Stats {
 	var stats Stats
 	for _, n := range v.notes {
 		if n.IsTopic {

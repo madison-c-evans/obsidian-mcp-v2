@@ -49,6 +49,7 @@ func main() {
 }
 
 func registerTools(s *server.MCPServer, v *vault.Vault) {
+	s.AddTool(primeTool(), primeHandler(v))
 	s.AddTool(searchTool(), searchHandler(v))
 	s.AddTool(readTool(), readHandler(v))
 	s.AddTool(graphTool(), graphHandler(v))
@@ -145,6 +146,74 @@ func joinOrNone(items []string) string {
 }
 
 // ── Tool defs + handlers ─────────────────────────────────────────────────────
+
+func primeTool() mcp.Tool {
+	return mcp.NewTool("vault_prime",
+		mcp.WithDescription(`Orient yourself in this vault before doing anything else. Returns a one-shot
+overview: vault stats, the topic ontology (curated hubs with descriptions,
+biggest areas first, showing how topics nest), and the status vocabulary
+actually in use. Call this at the start of a session to learn the vault's
+shape — what areas exist and how they relate — without having to probe with
+repeated list/search calls. After priming, use vault_search to retrieve and
+vault_graph to traverse.`),
+	)
+}
+
+func primeHandler(v *vault.Vault) server.ToolHandlerFunc {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		data := v.GetPrimeData()
+		s := data.Stats
+
+		parts := []string{
+			fmt.Sprintf("## Vault: %d notes, %d topics, %d upstream edges, %d inline mentions",
+				s.NoteCount, s.TopicCount, s.EdgeCount, s.MentionCount),
+			"",
+			"An Obsidian knowledge vault structured as an ontology graph. Each note carries " +
+				"frontmatter: `upstream` (parent topics/notes — the hierarchy), `tags`, `status`, " +
+				"and an optional `description`. Inline `[[wikilinks]]` form a secondary mention graph. " +
+				"Topics live in `topics/` and act as curated hubs summarizing an area.",
+			"",
+			"Retrieval: `vault_search` (description-weighted, graph-expanded) is the primary tool. " +
+				"`vault_graph` traverses from a note (ancestors/descendants/siblings/mentions). " +
+				"`vault_read` returns a note's full body.",
+			"",
+		}
+
+		parts = append(parts, "### Topic map (largest areas first)")
+		if len(data.Topics) == 0 {
+			parts = append(parts, "(no topics yet)")
+		} else {
+			for _, t := range data.Topics {
+				noun := "notes"
+			if t.NoteCount == 1 {
+				noun = "note"
+			}
+			line := fmt.Sprintf("- **%s** (%d %s)", t.Title, t.NoteCount, noun)
+				if t.Description != "" {
+					line += " — " + t.Description
+				}
+				if len(t.ParentTopics) > 0 {
+					line += "  _[under: " + strings.Join(t.ParentTopics, ", ") + "]_"
+				}
+				parts = append(parts, line)
+			}
+		}
+		parts = append(parts, "")
+
+		parts = append(parts, "### Status vocabulary in use")
+		if len(data.Statuses) == 0 {
+			parts = append(parts, "(no statuses set)")
+		} else {
+			var statusParts []string
+			for _, st := range data.Statuses {
+				statusParts = append(statusParts, fmt.Sprintf("%s (%d)", st.Status, st.Count))
+			}
+			parts = append(parts, strings.Join(statusParts, ", "))
+		}
+
+		return mcp.NewToolResultText(strings.Join(parts, "\n")), nil
+	}
+}
 
 func searchTool() mcp.Tool {
 	return mcp.NewTool("vault_search",
