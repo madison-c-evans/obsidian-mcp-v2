@@ -60,6 +60,7 @@ func registerTools(s *server.MCPServer, v *vault.Vault) {
 	s.AddTool(renameTool(), renameHandler(v))
 	s.AddTool(healthTool(), healthHandler(v))
 	s.AddTool(reindexTool(), reindexHandler(v))
+	s.AddTool(tasksTool(), tasksHandler(v))
 }
 
 // ── Formatters ───────────────────────────────────────────────────────────────
@@ -707,6 +708,75 @@ func healthHandler(v *vault.Vault) server.ToolHandlerFunc {
 		}
 
 		return mcp.NewToolResultText(strings.Join(parts, "\n")), nil
+	}
+}
+
+func tasksTool() mcp.Tool {
+	return mcp.NewTool("vault_tasks",
+		mcp.WithDescription(`Extract Markdown checkbox tasks ("- [ ]" / "- [x]") from notes
+across the vault. Filter by status, by topic (traverses upstream chain
+like vault_list/vault_search), or by tag. Read-only.`),
+		mcp.WithString("status", mcp.Description("Which tasks to include. Default: open"),
+			mcp.Enum("open", "done", "all")),
+		mcp.WithString("topic", mcp.Description("Only tasks in notes under this topic (traverses upstream chain)")),
+		mcp.WithString("tag", mcp.Description("Only tasks in notes carrying this tag")),
+	)
+}
+
+func tasksHandler(v *vault.Vault) server.ToolHandlerFunc {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		status := req.GetString("status", "open")
+		filters := vault.TaskFilters{
+			Status: status,
+			Topic:  req.GetString("topic", ""),
+			Tag:    req.GetString("tag", ""),
+		}
+		tasks := v.ListTasks(filters)
+
+		header := fmt.Sprintf("## Tasks (status: %s", status)
+		if filters.Topic != "" {
+			header += ", topic: " + filters.Topic
+		}
+		if filters.Tag != "" {
+			header += ", tag: " + filters.Tag
+		}
+		header += fmt.Sprintf(")  —  %d total", len(tasks))
+
+		if len(tasks) == 0 {
+			return mcp.NewToolResultText(header + "\n\nNo tasks match the filters."), nil
+		}
+
+		type group struct {
+			title string
+			path  string
+			items []vault.Task
+		}
+		order := []string{}
+		groups := map[string]*group{}
+		for _, t := range tasks {
+			g, ok := groups[t.NoteTitle]
+			if !ok {
+				g = &group{title: t.NoteTitle, path: t.NotePath}
+				groups[t.NoteTitle] = g
+				order = append(order, t.NoteTitle)
+			}
+			g.items = append(g.items, t)
+		}
+
+		parts := []string{header, ""}
+		for _, title := range order {
+			g := groups[title]
+			parts = append(parts, fmt.Sprintf("### %s  _(%s)_", g.title, g.path))
+			for _, t := range g.items {
+				box := "[ ]"
+				if t.Done {
+					box = "[x]"
+				}
+				parts = append(parts, "- "+box+" "+t.Text)
+			}
+			parts = append(parts, "")
+		}
+		return mcp.NewToolResultText(strings.TrimRight(strings.Join(parts, "\n"), "\n")), nil
 	}
 }
 
